@@ -2,13 +2,10 @@
 
 import { useEffect, useMemo } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
-import type { LatLngExpression } from "leaflet";
 import L from "leaflet";
 import type { GeocodingResult } from "@/lib/geocode";
 import "leaflet/dist/leaflet.css";
 
-const DEFAULT_CENTER: [number, number] = [20, 0];
-const DEFAULT_ZOOM = 2;
 const PLACE_ZOOM = 12;
 const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
@@ -62,34 +59,43 @@ export default function MapView({ selected }: { selected: GeocodingResult | null
     });
   }, []);
 
-  const center: LatLngExpression = DEFAULT_CENTER;
-
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Map</h2>
       </div>
 
-      <div className="h-[360px] w-full overflow-hidden border border-gray-400 bg-gray-100">
-        <MapContainer
-          center={center}
-          zoom={DEFAULT_ZOOM}
-          scrollWheelZoom
-          className="h-full w-full"
-          attributionControl
+      {validSelection && selected ? (
+        <div className="h-[360px] w-full overflow-hidden border border-gray-400 bg-gray-100">
+          <MapContainer
+            center={[selected.latitude, selected.longitude]}
+            zoom={PLACE_ZOOM}
+            scrollWheelZoom
+            className="h-full w-full"
+            attributionControl
+          >
+            <TileLayer
+              url={OSM_TILE_URL}
+              attribution="&copy; OpenStreetMap contributors"
+            />
+            <MapCenter selected={selected} />
+            {markerIcon && (
+              <Marker position={[selected.latitude, selected.longitude]} icon={markerIcon}>
+                <Popup>{selected.display_name}</Popup>
+              </Marker>
+            )}
+          </MapContainer>
+        </div>
+      ) : (
+        <div
+          role="status"
+          className="flex h-[360px] w-full items-center justify-center border border-gray-400 bg-gray-100 px-4 text-center text-gray-700"
         >
-          <TileLayer
-            url={OSM_TILE_URL}
-            attribution="&copy; OpenStreetMap contributors"
-          />
-          {validSelection && <MapCenter selected={selected} />}
-          {validSelection && markerIcon && (
-            <Marker position={[selected.latitude, selected.longitude]} icon={markerIcon}>
-              <Popup>{selected.display_name}</Popup>
-            </Marker>
-          )}
-        </MapContainer>
-      </div>
+          {selected
+            ? "This location has invalid coordinates and cannot be shown on the map."
+            : "Search for a location and select a result to display it on the map."}
+        </div>
+      )}
     </div>
   );
 }

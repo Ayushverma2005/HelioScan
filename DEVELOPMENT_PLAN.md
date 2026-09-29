@@ -106,9 +106,9 @@ Each phase is a checkpoint. After a phase, record completion in git only if the 
 
 **Prerequisites:** Phase 3. Map library chosen after license + Next.js compatibility check.
 
-**Files expected:** Map component, tile attribution, types for lat/lon/bbox.
+**Files expected:** Map component, tile attribution, and lat/lon types. A bbox/viewport type is deferred until a consumer or suitable backend API exists.
 
-**Functionality:** Marker and pan/zoom. Persist selected point/bbox to backend if API exists this phase (keep minimal).
+**Functionality:** Marker and pan/zoom for user confirmation. No suitable persistence API currently exists, so selected point/bbox persistence is deferred; do not invent an endpoint.
 
 **Tests required:** Component test or e2e smoke if available; do not fail CI on missing map tiles if mocked.
 
@@ -118,65 +118,78 @@ Each phase is a checkpoint. After a phase, record completion in git only if the 
 
 **Rollback/checkpoint:** Hide map route; keep geocoding JSON API.
 
----
-
-## Phase 5 — Esri / ArcGIS imagery
-
-**Objective:** Fetch aerial/satellite imagery for the selected extent using a **verified** Esri/ArcGIS (or documented fallback) API.
-
-**Prerequisites:** Phase 4. Written verification: product, auth, credits, cache/PDF rules.
-
-**Files expected:** Imagery service, storage path, metadata (CRS, size, GSD if provided), attribution in UI.
-
-**Functionality:** Request image for bbox; show on map or side panel; persist file + metadata.
-
-**Tests required:** Mocked export/tile responses; 401/429/timeout; invalid image bytes rejected.
-
-**Definition of done:** Real client matches official docs; failures visible; no redistributed tiles unless license allows.
-
-**Possible edge cases:** Max image size; geographic vs Web Mercator; API credits exhaustion; WSL file paths.
-
-**Rollback/checkpoint:** Disable imagery fetch; map-only mode.
+**Viewport note:** Phase 4 supports user pan/zoom and visual location confirmation. A typed bbox/viewport contract and persistence are deferred until a consumer or suitable backend API exists; do not invent an endpoint for this phase.
 
 ---
 
-## Phase 6 — Rooftop segmentation dataset
+## Phase 5 — NAIP imagery acquisition and integration
 
-**Objective:** Define dataset layout, license, split, and loading code. Obtain or reject datasets **only** after license review. No claim of a trained production model.
+**Decision:** HelioScan's current imagery scope is US-focused. Esri/ArcGIS was originally proposed, then rejected after coverage and usage/redistribution concerns; the project's former India/global imagery ambition is not current scope. The selected source is the USGS NAIP Plus ImageServer, which combines NAIP and high-resolution orthoimagery and varies by location. It is not a global source; do not assume coverage outside verified US extents or fall back to another provider.
 
-**Prerequisites:** Phase 0 ML stack. Dataset decision recorded.
+**Objective:** Retrieve NAIP imagery for a selected geographic extent, validate it, persist it with metadata, and make it available to rooftop segmentation.
 
-**Files expected:** `ml/data/` (gitignored binaries), dataset README with **actual** source URLs from official pages, `Dataset` class, split script.
+**Prerequisites:** Phase 4. The official USGS NAIP Plus ImageServer endpoint and ArcGIS exportImage request contract have been verified and implemented; current coverage for each AOI remains data-dependent. Record and review current USGS/The National Map and USDA/FSA usage, licensing/redistribution terms, and required acknowledgements before production redistribution. Do not infer legal rights from service metadata alone.
 
-**Functionality:** Load images/masks; visualize a sample (script).
+**Files expected:** `backend/app/imagery/` client, validated raster/metadata contract, local storage, source/attribution metadata, mocked tests, optional live checker, and Phase 5 source verification memo.
 
-**Tests required:** Loader tests with **tiny synthetic fixtures** in-repo (not the full dataset).
+**Functionality:**
 
-**Definition of done:** License documented; loader works on fixtures; full data optional on disk.
+- Acquire imagery for a selected bbox/extent through the verified source and method.
+- Validate the returned file: readable raster, supported format, dimensions, bands, CRS, extent/georeferencing, and any needed resolution/GSD metadata.
+- Preserve source, acquisition time, CRS, dimensions, band information, extent, attribution/acknowledgement, and applicable license metadata.
+- Define storage location and safe WSL path behavior; make validated imagery available to Phase 6.
+- Enforce verified source limits or conservative request/image-size bounds, finite timeouts, visible failure states, and rejection of invalid/truncated image data. Do not invent source limits.
+- Test mocked success and failure paths, including timeout, unavailable source, invalid image, unsupported CRS/bands, and over-limit payloads.
 
-**Possible edge cases:** Mask format (0/1 vs 0/255); CRS mismatch; insufficient labeled roofs.
+**Fixture boundary:** `data/test/naip/cedar_park_residential.tif` is an existing real local test image used for inference validation. It is a fixture only, not evidence that HelioScan's imagery acquisition integration exists or works. Verify its source, use, attribution, and redistribution rights before relying on or distributing it.
 
-**Rollback/checkpoint:** Keep fixtures; delete large downloads.
+**Definition of done:** The actual HelioScan acquisition path retrieves imagery for a supported selected extent, validates it, persists it with metadata, and supplies it to Phase 6. A local TIFF fixture alone does not satisfy this phase. Coverage gaps and unsupported extents fail clearly; source terms and attribution are documented; mocked success/failure tests pass.
+
+**Possible edge cases:** Coverage gaps; bbox ordering/axis conventions; CRS conversion; missing georeferencing; unusual dimensions/band counts; oversized or truncated files; timeouts; source changes; Windows/WSL path translation; attribution and redistribution limits.
+
+**Rollback/checkpoint:** Disable remote imagery acquisition; retain local test fixtures; allow map-only/manual imagery mode.
+
+**Implementation status:** The reusable NAIP client, Rasterio validation, local TIFF/JSON persistence, mocked tests, and optional live checker are implemented. Phase 5 is not declared complete until the documented usage/redistribution review and required phase verification gates are resolved.
 
 ---
 
-## Phase 7 — U-Net training pipeline
+## Phase 6 — Rooftop dataset and Model M integration
 
-**Objective:** Train a U-Net with logged metrics; save checkpoints; GPU/CPU device selection per `AGENT_RULES.md`.
+**Objective:** Establish the dataset/fixture boundary and integrate the current frozen Model M baseline for inference. Build the image-to-mask contract, including tiling, reconstruction, and post-processing, without requiring HelioScan to train a model first.
 
-**Prerequisites:** Phase 6; PyTorch CUDA test already recorded.
+**Prerequisites:** Phase 0 ML stack; Phase 5 validated imagery contract; verify Model M source/checkpoint license and use terms before redistribution or deployment.
 
-**Files expected:** Model definition, train/eval scripts, config (YAML/JSON), checkpoint directory gitignored.
+**Files expected:** Dataset/source/license notes; `ml/data/` layout with large data gitignored; fixture loader and visualization; Model M inference adapter/configuration; input/output contract; tiling and mask-reconstruction utilities; focused tests.
 
-**Functionality:** One training run on fixtures (smoke) and, if data exists, a real run. Evaluate IoU/Dice or documented metrics.
+**Functionality:** Load validated imagery and permitted fixtures; run Model M inference; reconstruct tiled predictions into image coordinates; define mask/post-processing outputs and failure behavior. Keep `data/test/naip/cedar_park_residential.tif` identified as a local test fixture, not imagery integration. Record dataset provenance and avoid geographic/source leakage in any future evaluation split.
 
-**Tests required:** Forward pass shape tests; smoke train 1–2 steps on CPU; device helper tests with mocked cuda.
+**Tests required:** Fixture/raster loading and validation; preprocessing and output-shape checks; tile boundaries/reconstruction; inference smoke test when the licensed checkpoint is available. No formal accuracy result without ground-truth labels.
 
-**Definition of done:** Training script exits 0 on smoke; metrics logged; no silent CUDA fallback without log.
+**Definition of done:** The frozen baseline consumes Phase 5 imagery under a documented input contract and produces a correctly shaped reconstructed mask; failures are explicit; fixture provenance/license status and model/checkpoint terms are recorded. This phase does not require training.
 
-**Possible edge cases:** OOM; mixed precision; empty batch; non-reproducible seeds.
+**Possible edge cases:** INRIA-to-target domain shift; imagery scale/GSD and CRS; dimensions not divisible by tile size; overlap/seams; memory limits; unavailable or incompatible checkpoint; mask class interpretation.
 
-**Rollback/checkpoint:** Keep model code; discard bad checkpoints.
+**Rollback/checkpoint:** Keep the Model M baseline/configuration record; disable inference integration and retain validated imagery/fixtures if the checkpoint or license blocks use.
+
+---
+
+## Phase 7 — Segmentation evaluation and optional training/fine-tuning
+
+**Objective:** Quantitatively evaluate segmentation where labeled ground truth exists, analyze errors, and provide optional training/fine-tuning paths. Model M remains the initial frozen baseline; U-Net is an alternative research/training path, not a prerequisite for the first working inference pipeline.
+
+**Prerequisites:** Phase 6 inference contract; licensed labeled data for any formal metric; PyTorch/CUDA facts and device checks recorded per `AGENT_RULES.md`.
+
+**Files expected:** Evaluation scripts and reports; geographic/source-aware split definitions; reproducible optional U-Net and/or Model M fine-tuning configuration; checkpoint/version metadata; GPU/CPU device selection.
+
+**Functionality:** Compute IoU, Dice, precision, recall, or other documented metrics only where valid ground-truth labels exist; perform error analysis; optionally train/fine-tune or compare models. Preserve Model M's frozen baseline for comparison. Do not label visual plausibility or inference success as formal accuracy.
+
+**Tests required:** Metric tests against synthetic masks; deterministic evaluation smoke tests; training smoke tests only for paths actually implemented; device helper tests with mocked CUDA where applicable.
+
+**Definition of done:** Evaluation data and methodology are documented; metrics can be reproduced and are reported with dataset/split context; optional training is reproducible and does not silently fall back from the configured device. If no suitable ground truth exists, record the gap rather than inventing scores.
+
+**Possible edge cases:** Label disagreement; leakage across neighboring tiles; class imbalance; geographic/domain shift; checkpoint provenance; nondeterminism; OOM; mixed precision; incomplete masks.
+
+**Rollback/checkpoint:** Retain Model M as the frozen baseline; discard experimental checkpoints that do not improve validated outcomes; do not block Phase 8 on optional training if Phase 6 inference is usable.
 
 ---
 
@@ -184,7 +197,7 @@ Each phase is a checkpoint. After a phase, record completion in git only if the 
 
 **Objective:** Convert mask + geospatial scale to roof m² and usable m² with documented factors.
 
-**Prerequisites:** Segmentation inference callable (even if weights are weak). Imagery metadata with scale **or** explicit failure if scale unknown.
+**Prerequisites:** Phase 6 segmentation inference callable. Phase 5 imagery metadata with scale **or** explicit failure if scale is unknown. Phase 7 training/evaluation is not a prerequisite.
 
 **Files expected:** Area service, assumption constants documented, FastAPI exposure if in-product.
 
@@ -403,14 +416,13 @@ Each phase is a checkpoint. After a phase, record completion in git only if the 
 ## Phase dependency graph (summary)
 
 ```
-0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
-                ↘               ↙
-                  9 → 10 → 11
-                         ↘
-            12 (can start after 1; needed before 15 persistence)
-            13 after 11 (+ Ollama)
-            14 after 11 (narrative optional)
-            15 → 16 → 17 → 18
+0 → 1 → 2 → 3 → 4 → 5 → 6 → 8 → 9 → 10 → 11
+                         └→ 7 (optional evaluation / training; does not gate 8)
+
+12 (can start after 1; needed before 15 persistence)
+13 after 11 (+ Ollama)
+14 after 11 (narrative optional)
+15 → 16 → 17 → 18
 ```
 
 PostgreSQL (12) may be pulled earlier if needed for job tracking, but **tables for analyses should wait until there is something real to persist**.

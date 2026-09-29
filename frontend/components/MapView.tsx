@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useEffectEvent, useMemo } from "react";
+import parseGeoraster from "georaster";
+import GeoRasterLayer from "georaster-layer-for-leaflet";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import type { GeocodingResult } from "@/lib/geocode";
@@ -8,6 +10,11 @@ import "leaflet/dist/leaflet.css";
 
 const PLACE_ZOOM = 12;
 const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+type NaipMapImage = {
+  url: string;
+  attribution: string;
+};
 
 function isValidLatitude(value: number): boolean {
   return Number.isFinite(value) && value >= -90 && value <= 90;
@@ -37,7 +44,80 @@ function MapCenter({ selected }: { selected: GeocodingResult | null }) {
   return null;
 }
 
-export default function MapView({ selected }: { selected: GeocodingResult | null }) {
+function NaipRasterOverlay({
+  image,
+  onError,
+}: {
+  image: NaipMapImage;
+  onError: (message: string) => void;
+}) {
+  const map = useMap();
+  const reportError = useEffectEvent(onError);
+
+  useEffect(() => {
+    let cancelled = false;
+    let rasterLayer: L.Layer | null = null;
+
+    async function loadRaster() {
+      try {
+        const response = await fetch(image.url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("NAIP image request failed.");
+        }
+
+        const georaster = await parseGeoraster(await response.arrayBuffer());
+        if (cancelled) {
+          return;
+        }
+
+        const layer = new GeoRasterLayer({
+          georaster,
+          opacity: 0.9,
+          attribution: image.attribution,
+          resolution: 256,
+          pixelValuesToColorFn: (values) => {
+            if (
+              values.length < 3 ||
+              values.every((value) => value === georaster.noDataValue) ||
+              values[3] === 0
+            ) {
+              return null;
+            }
+
+            return `rgb(${values[0]}, ${values[1]}, ${values[2]})`;
+          },
+        });
+        rasterLayer = layer;
+        layer.addTo(map);
+      } catch {
+        if (!cancelled) {
+          reportError("The acquired NAIP image could not be loaded on the map.");
+        }
+      }
+    }
+
+    void loadRaster();
+
+    return () => {
+      cancelled = true;
+      if (rasterLayer) {
+        map.removeLayer(rasterLayer);
+      }
+    };
+  }, [image.attribution, image.url, map]);
+
+  return null;
+}
+
+export default function MapView({
+  selected,
+  naipImage,
+  onNaipError,
+}: {
+  selected: GeocodingResult | null;
+  naipImage: NaipMapImage | null;
+  onNaipError: (message: string) => void;
+}) {
   const validSelection =
     selected !== null &&
     isValidLatitude(Number(selected.latitude)) &&
@@ -78,6 +158,7 @@ export default function MapView({ selected }: { selected: GeocodingResult | null
               url={OSM_TILE_URL}
               attribution="&copy; OpenStreetMap contributors"
             />
+            {naipImage && <NaipRasterOverlay image={naipImage} onError={onNaipError} />}
             <MapCenter selected={selected} />
             {markerIcon && (
               <Marker position={[selected.latitude, selected.longitude]} icon={markerIcon}>

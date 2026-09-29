@@ -1,7 +1,6 @@
-# HelioScan — Environment setup (planned)
+# HelioScan — Environment setup
 
-**Status:** Documentation only. **Do not execute installation commands as part of the specification task.**  
-When Phase 0 is authorized, run the **verification** commands on the actual machine and record results in `docs/environment-actual.md` (to be created then).
+**Status:** Environment inspection and PyTorch/CUDA compatibility findings are recorded in `docs/PHASE_00_ENV_AUDIT.md` and `docs/PHASE_00_PYTORCH_COMPATIBILITY.md`. This document retains setup guidance; verify current machine state before applying commands. It is not authorization to install or change dependencies.
 
 Intended development setup:
 
@@ -245,7 +244,7 @@ Typical keys (names may change; **no values** here):
 
 - `DATABASE_URL`
 - Geocoding API key (if the chosen provider requires one)
-- Esri/ArcGIS credentials (if required)
+- NAIP acquisition source, method, coverage, and usage terms (to be verified in Phase 5; do not assume credentials or endpoints)
 - `OLLAMA_HOST` / model name
 - `NASA_POWER` usually public HTTP—still confirm whether a key is required **from current docs**
 - `HELIO_DEVICE=cuda|cpu|auto`

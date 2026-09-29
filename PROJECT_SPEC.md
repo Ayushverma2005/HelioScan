@@ -1,9 +1,9 @@
 # HelioScan — Project Specification
 
-**Status:** Specification only. Application code is not implemented.  
+**Status:** Living product and architecture specification; implementation is in progress under the phased plan.
 **Audience:** Product, architecture, and development agents working on HelioScan.
 
-This document is the product and system specification. Implementation must not begin until Phase 0 (environment and project foundation) is explicitly authorized.
+This document records product direction and system boundaries. `DEVELOPMENT_PLAN.md` controls phase authorization and implementation scope; early backend geocoding and frontend map slices already exist.
 
 ---
 
@@ -11,7 +11,7 @@ This document is the product and system specification. Implementation must not b
 
 ### 1.1 What HelioScan does
 
-HelioScan is an AI-powered rooftop solar feasibility and energy-yield intelligence platform. A user supplies a street address. The system geocodes that address, displays it on an interactive map, fetches aerial or satellite imagery, segments the rooftop with a trained PyTorch U-Net, estimates usable roof area, retrieves solar irradiance from NASA POWER, computes deterministic energy yield and financial metrics, estimates CO₂ reduction, asks a local Llama model (via Ollama) to write a professional explanation of those validated numbers, and presents the result in a Next.js dashboard with a downloadable PDF feasibility report.
+HelioScan is a US-focused rooftop solar feasibility and energy-yield intelligence platform. A user supplies a US address. The system geocodes that address and displays it on an interactive map. The selected imagery source is the USGS NAIP Plus ImageServer, which combines NAIP and high-resolution orthoimagery; coverage and resolution vary by location and the source is not global. Phase 5 acquisition is implemented, while current source usage/redistribution terms still require review. The current frozen segmentation baseline is Model M (STT + ResNet-50 + INRIA checkpoint), selected after exact checkpoint compatibility and engineering inference validation. The system is planned to estimate usable roof area, retrieve solar irradiance from NASA POWER, compute deterministic energy and financial metrics, estimate CO₂ reduction, use local Llama via Ollama for explanation of validated numbers, and present results in a Next.js dashboard with a downloadable PDF feasibility report.
 
 HelioScan is a **decision-support** tool. It produces pre-sales / pre-engineering feasibility estimates, not stamped construction drawings, structural analysis, or utility interconnection applications.
 
@@ -22,7 +22,7 @@ HelioScan is a **decision-support** tool. It produces pre-sales / pre-engineerin
 | Homeowners | Understand whether their roof is a reasonable solar candidate and what ballpark generation, payback, and CO₂ impact look like. |
 | Solar sales / site-assessment teams | Produce a consistent, address-based feasibility pack without a site visit as the first step. |
 | Energy consultants / analysts | Compare yield and financial assumptions across properties using a repeatable pipeline. |
-| Developers / operators of HelioScan | Run the stack locally (Windows host + WSL2), train or infer the U-Net, and generate reports. |
+| Developers / operators of HelioScan | Run the stack locally (Windows host + WSL2), integrate and evaluate Model M, and generate reports. |
 
 Primary demo user is a **homeowner or solar analyst** completing one address-to-PDF journey.
 
@@ -44,9 +44,9 @@ HelioScan binds geolocation, imagery, computer vision, physics-style yield math,
 3. Backend geocodes the address to latitude/longitude and a normalized place record.
 4. Frontend shows an interactive map centered on the coordinates.
 5. User confirms the location (and later, optionally, a roof bounding box / polygon).
-6. Backend requests aerial/satellite imagery for the selected extent (planned: Esri/ArcGIS World Imagery or equivalent, **pending license and API verification**).
+6. The imagery service retrieves NAIP imagery for the selected extent when the extent is within verified coverage (Phase 5; official source, acquisition method, terms, and coverage verification remain required).
 7. Imagery is stored and passed to the segmentation service.
-8. U-Net produces a rooftop mask (and later, optional obstruction / usable-area refinements).
+8. Model M produces a building/rooftop segmentation mask under the Phase 6 inference contract. The original U-Net plan remains a future alternative, not a prerequisite.
 9. Geometry + pixel scale produce estimated roof area (m²) and usable area (m²).
 10. Backend queries NASA POWER for solar resource data at the coordinates.
 11. Solar calculation engine converts usable area, assumed array parameters, and irradiance into annual (and monthly, if data supports it) energy generation.
@@ -62,8 +62,8 @@ A local demo (not claimed as production-ready) in which an operator:
 
 1. Starts PostgreSQL, FastAPI, Next.js, and Ollama (planned).
 2. Enters a real, geocodable address.
-3. Sees the map and imagery.
-4. Sees a rooftop mask and area estimate (quality depends on trained model and imagery).
+3. Sees the map and, for extents within verified NAIP coverage, retrieved imagery; unsupported extents receive a clear unavailable state.
+4. Sees a rooftop mask and area estimate (quality depends on model, imagery, and geographic domain; Model M has no formal HelioScan accuracy benchmark yet).
 5. Sees NASA POWER–backed irradiance and deterministic kWh, finance, and CO₂ figures.
 6. Reads an LLM-written proposal that quotes those figures.
 7. Downloads a PDF that matches the on-screen numbers.
@@ -100,7 +100,7 @@ HelioScan is a **modular monolith** in the first implementation: one FastAPI pro
         │              │                  │
         ▼              ▼                  ▼
   PostgreSQL     ML artifacts        External HTTP
-                 (ml/ + data/)       Geocoding · Esri/ArcGIS
+                 (ml/ + data/)       Geocoding · NAIP imagery
                                      NASA POWER · Ollama
 ```
 
@@ -111,7 +111,7 @@ HelioScan is a **modular monolith** in the first implementation: one FastAPI pro
 | Next.js | App Router UI, dashboard pages, API client to FastAPI. |
 | TypeScript | Typed UI and API DTOs matching backend Pydantic models (contract documented when APIs exist). |
 | Tailwind CSS | Layout and visual system. |
-| Leaflet or equivalent | Interactive map, markers, later roof overlay. Library choice is confirmed in Phase 4 after license and Next.js compatibility check. |
+| Leaflet + React Leaflet | Selected interactive map and marker implementation; Next.js production build compatibility has been validated with Webpack. Review the declared React Leaflet Hippocratic-2.1 license before release. |
 | Recharts | Charts for monthly irradiance/generation and financial series. |
 
 Frontend **does not** compute energy, finance, or CO₂. It displays backend-validated results.
@@ -132,7 +132,7 @@ Frontend **does not** compute energy, finance, or CO₂. It displays backend-val
 
 | Technology | Role |
 | --- | --- |
-| PyTorch | U-Net training and inference. |
+| PyTorch | Model M inference baseline; optional U-Net training or Model M fine-tuning/evaluation in Phase 7. |
 | torchvision | Transforms, optional pretrained backbones **only if license and API are verified**. |
 | OpenCV / Pillow | Image I/O, resizing, mask post-processing. |
 | Augmentation library | Planned candidate: Albumentations (verify license and API in Phase 6–7). |
@@ -142,12 +142,12 @@ Device policy: **GPU when verified available; CPU fallback for inference/develop
 
 ### 2.4 External services
 
-All providers below are **planned**. Endpoints, auth, quotas, and licenses **must be verified from official documentation before any client is written**. Do not treat this table as a live API reference.
+The table distinguishes the existing initial geocoding provider from planned integrations. For every external service, endpoints, auth, quotas, and licenses must be verified from official documentation before implementing or changing a client. Do not treat unverified items as a live API reference.
 
 | Service | Planned use | Verification required before implementation |
 | --- | --- | --- |
-| Geocoding provider | Address → lat/lon, display name, confidence. Candidates include ArcGIS Geocoding (if Esri stack is already used), OpenStreetMap Nominatim (usage policy constraints), or another commercial geocoder. **Not selected.** | Official docs, ToS, attribution, rate limits, API key rules. |
-| Esri / ArcGIS imagery | Aerial/satellite tiles or export for the selected bounding box. | Product name, REST vs SDK, authentication, credits, caching/redistribution rules. |
+| Geocoding provider | Nominatim is the initial Phase 3 provider for deliberate backend-mediated searches; see `docs/PHASE_03_NOMINATIM_VERIFICATION.md`. | Recheck public service policy, attribution, and traffic constraints before operational changes. |
+| USGS NAIP Plus imagery | Implemented Phase 5 acquisition client for US AOIs, with WGS84 input and EPSG:3857 GeoTIFF output. Coverage and resolution vary by location. | Endpoint and exportImage contract verified; review current usage/redistribution terms before production distribution. Do not assume global availability or invent API/auth details. |
 | NASA POWER | Solar radiation and related meteorology at point location. | Current POWER API paths, parameters, units, citation requirements. |
 | Ollama / Llama | Local generation of proposal narrative from a **fixed JSON payload of already-computed metrics**. | Installed model name, context limits, HTTP API schema. |
 
@@ -184,7 +184,7 @@ End-to-end pipeline (each arrow is a module boundary with typed inputs/outputs):
 ```
 Address (user string)
   → Coordinates + normalized address (geocoding)
-  → Map view (frontend Leaflet; backend may persist bbox)
+  → Map view (frontend Leaflet; bbox contract/persistence deferred until a consumer or suitable backend API exists)
   → Imagery raster + georeference metadata (imagery service)
   → Rooftop segmentation logits/mask (ML inference)
   → Roof mask (post-processed binary/instance mask)
@@ -205,9 +205,9 @@ These are **logical schemas**, not implemented APIs. Field names may change when
 | Stage | Input | Output (conceptual) | Source of truth |
 | --- | --- | --- | --- |
 | Geocoding | `query: str` | `lat, lon, label, provider, raw_ref` | Geocoder |
-| Map | `lat, lon` | Viewport / optional bbox | User + frontend |
+| Map | `lat, lon` | Selected point and user-controlled viewport; bbox contract/persistence deferred until a consumer or suitable backend API exists | User + frontend |
 | Imagery | `bbox` or point+zoom, CRS | Image bytes, width/height, meters-per-pixel or affine, attribution | Imagery provider |
-| Segmentation | Image tensor | Mask, confidence/metrics | U-Net |
+| Segmentation | Validated imagery tensor/tiles | Reconstructed building/rooftop mask; metrics only when quantitatively measured | Model M frozen baseline; alternatives in Phase 7 |
 | Roof area | Mask + scale | `roof_area_m2` | Geometry math |
 | Usable area | Roof area + factors | `usable_area_m2` | Documented factors |
 | Solar data | `lat, lon, dates` | Irradiance series + metadata | NASA POWER |
@@ -323,8 +323,9 @@ A thin **analysis orchestrator** (application service) sequences the pipeline, w
 | --- | --- |
 | `AGENT_RULES.md` | Binding development rules |
 | `DEVELOPMENT_PLAN.md` | Phased delivery |
-| `REQUIREMENTS_PLAN.md` | Planned dependency groups (no pinned versions yet) |
-| `ENVIRONMENT_SETUP.md` | Intended toolchain; verification commands **not yet executed** |
+| `REQUIREMENTS_PLAN.md` | Dependency roles and selection constraints; exact pins are in the current manifests |
+| `ENVIRONMENT_SETUP.md` | Setup guidance with verified environment findings linked in `docs/` |
+| `docs/MODEL_SELECTION_JOURNEY.md` | Frozen Model M baseline decision and engineering validation |
 | `README.md` | Project entry point |
 
 ---

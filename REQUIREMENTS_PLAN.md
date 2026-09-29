@@ -1,10 +1,10 @@
 # HelioScan — Requirements plan
 
-**Status:** Planning only. **Do not install packages. Do not pin versions in this document as if they were verified.**
+**Status:** Dependency-selection guidance. Current Python pins are in `backend/requirements.txt` and `ml/requirements.txt`; frontend pins are in `frontend/package.json` and `frontend/package-lock.json`. This document describes package roles and future selection constraints; it is not a substitute for those manifests.
 
-A real `backend/requirements.txt` and, if needed, `ml/requirements.txt` will be generated **after** Phase 0 inspects Python, pip, NVIDIA driver, GPU, and official PyTorch compatibility. Until then, there is **no** authoritative lockfile.
+Phase 0 environment and PyTorch compatibility findings are recorded in `docs/PHASE_00_ENV_AUDIT.md` and `docs/PHASE_00_PYTORCH_COMPATIBILITY.md`. Do not change installed dependencies or pins without the relevant phase authorization and compatibility review.
 
-Do not duplicate incompatible dependency versions across backend and ML files. If both files exist later, shared libraries (NumPy, Pydantic, httpx) must be aligned or clearly layered (e.g. ML extra on top of backend).
+Do not duplicate incompatible dependency versions across backend and ML files. Shared libraries (NumPy, Pydantic, httpx) must remain aligned or clearly layered (e.g. an ML extra on top of backend dependencies).
 
 ---
 
@@ -43,7 +43,7 @@ Planned (Python):
 
 | Package | Planned role |
 | --- | --- |
-| PyTorch (`torch`) | U-Net train/infer; CUDA build **only after GPU verification** |
+| PyTorch (`torch`) | Model M inference baseline; optional evaluation, U-Net training, or Model M fine-tuning in Phase 7. CUDA build **only after GPU verification** |
 | torchvision | Transforms, datasets helpers |
 | OpenCV (`opencv-python` or headless variant) | Image I/O, morphology on masks |
 | Pillow | Image I/O |
@@ -52,7 +52,7 @@ Planned (Python):
 | scikit-learn | Train/val split helpers, simple metrics if used |
 | Image augmentation | Planned candidate: **Albumentations**; confirm license, OpenCV dependency, and API in Phase 6–7 |
 
-Optional later (do not add until needed): `segmentation-models-pytorch`, `timm`, `rasterio` / `affine` for geospatial pixel scale. Each requires a written justification and license check.
+`rasterio` is pinned in `backend/requirements.txt` for Phase 5 GeoTIFF validation. Do not duplicate it in the ML requirements unless a later ML-specific raster operation requires that environment to install it independently. Other optional packages such as `segmentation-models-pytorch`, `timm`, or `affine` require a written justification and license check before addition.
 
 **CUDA:** The `torch` index URL (CPU vs `cuXXX`) is an **environment outcome**, not a guess in this file.
 
@@ -60,7 +60,7 @@ Optional later (do not add until needed): `segmentation-models-pytorch`, `timm`,
 
 ## 4. Frontend (Node)
 
-Planned (exact versions via `package.json` when Phase 2 starts):
+Selected early frontend stack; exact installed versions are recorded in `frontend/package.json` and `frontend/package-lock.json`:
 
 | Package | Planned role |
 | --- | --- |
@@ -68,8 +68,8 @@ Planned (exact versions via `package.json` when Phase 2 starts):
 | React | UI |
 | TypeScript | Typing |
 | Tailwind CSS | Styling |
-| Leaflet (or MapLibre GL, if Leaflet is a poor Next.js fit) | Map |
-| React bindings for the map library | Confirm official package for chosen map lib |
+| Leaflet | Selected map engine; the Phase 4 Next.js production build was validated with Webpack |
+| React Leaflet | Selected React bindings for Leaflet; package and core declare Hippocratic-2.1, so project license acceptance remains a release review item |
 | Recharts | Charts |
 | Axios **or** native `fetch` | HTTP to FastAPI; prefer one client and stick to it |
 
@@ -113,44 +113,37 @@ Do not add cloud LLM SDKs (OpenAI, Anthropic, etc.) unless a later phase explici
 | mypy or Pyright | Type check — **pick in Phase 0** |
 | coverage (optional) | Coverage reports |
 
-Frontend: ESLint, TypeScript `tsc`, and the Next.js test runner or Playwright/Cypress **when** UI tests are in scope (Phase 2 / 16). Not installed now.
+Frontend: ESLint and TypeScript `tsc` are in use. No component/e2e test framework is currently recorded; add one only when a phase requires it and the test scope justifies it.
 
 ---
 
-## 8. Proposed file layout (later)
+## 8. Current dependency files and layout
 
-When versions are verified:
+The repository currently uses:
 
 ```
 backend/requirements.txt          # API + DB + httpx + shared calc deps
 backend/requirements-dev.txt      # pytest, lint, types (optional split)
 ml/requirements.txt               # torch, torchvision, cv, augment — may `-r ../backend/requirements.txt` or list extras only
-frontend/package.json             # npm lockfile committed when created
+frontend/package.json             # frontend dependency manifest
+frontend/package-lock.json        # npm lockfile
 ```
 
-**Rule:** Do not put a CUDA-specific `torch` pin in `backend/requirements.txt` if developers without GPUs must install the API. Options to decide in Phase 0:
+**Rule:** Keep CUDA-specific `torch` pins in the ML dependency group so developers who only need the API do not have to install the GPU stack. The current GPU environment and tested model configuration are recorded in the Phase 0 and Model Selection Journey reports. Revisit the split only through an authorized dependency phase.
 
-- A. CPU `torch` in backend for inference-light API; GPU extra file for training machines
-- B. Document two install paths (CPU vs CUDA) in README with official PyTorch commands
-- C. ML inference as a separate process with its own venv
-
-Default recommendation: **B + optional `ml/requirements.txt`**, so FastAPI can run without a multi-GB CUDA wheel if inference is optional in early phases.
+This keeps API-only backend setup independent from GPU-enabled ML installation.
 
 ---
 
-## 9. Explicitly out of scope for pinning today
+## 9. Version governance
 
-- Exact FastAPI / Pydantic / SQLAlchemy versions
-- Exact PyTorch / CUDA versions
-- Exact Next.js major version
-- PostgreSQL major version (document installed version in Phase 0)
+Exact package pins live in the current dependency manifests, not this planning document. Do not infer installed versions from the role tables above. Changes require phase authorization and compatibility verification; PostgreSQL remains deferred until its phase.
 
 ---
 
 ## 10. Stop condition
 
-This file is complete when groups and constraints are documented.  
-**Do not** create a guessed `requirements.txt` from this list.
+This file records dependency roles and constraints. It is not an installation command or source of version pins. **Do not** create guessed dependency changes from this plan.
 
 ---
 

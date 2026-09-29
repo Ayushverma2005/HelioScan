@@ -12,7 +12,7 @@ These rules bind every human and AI contributor. They are not optional. If a req
 - Do not rewrite working code without a stated reason (bug, security, or an explicit refactor task).
 - Prefer small, incremental diffs.
 
-This repository’s first delivered work is **specification only**. Application implementation starts only when Phase 0 is explicitly authorized.
+This repository began as specification-only. Implementation work now exists for authorized early phases; continue to follow the current phase boundaries and require explicit authorization before starting a new phase.
 
 ---
 
@@ -63,7 +63,7 @@ Write the verification result into `docs/` (or the phase notes) **before** imple
 
 - Store secrets in environment variables / `.env` (gitignored).
 - Ship `.env.example` with blank or dummy names only.
-- Never commit credentials, Esri tokens, database passwords, or Ollama-unrelated cloud keys.
+- Never commit provider credentials, database passwords, or Ollama-unrelated cloud keys.
 
 ---
 

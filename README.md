@@ -2,13 +2,13 @@
 
 **Status: Under Development**
 
-HelioScan is an AI-powered rooftop solar feasibility and energy-yield intelligence platform. This repository currently contains **architecture and specification only**. Features listed below are **planned**, not implemented. Do not assume APIs, models, or Docker workflows work until their development phase is complete and tested.
+HelioScan is a US-focused rooftop solar feasibility and energy-yield intelligence platform. This repository contains phased specifications and working early application slices, including backend health/geocoding and NAIP acquisition, frontend search, and an interactive map. Segmentation integration and downstream analysis are not complete. Treat each phase as planned until its definition of done is verified.
 
 ---
 
 ## What it will do
 
-A user searches for an address. The system geocodes it, shows an interactive map, retrieves aerial/satellite imagery, segments the rooftop with a PyTorch U-Net, estimates roof and usable area, pulls solar resource data from NASA POWER, computes **deterministic** energy, financial, and CO₂ figures in Python, asks a **local** Llama model (Ollama) to write a professional explanation of those validated numbers, and presents results in a Next.js dashboard with a PDF feasibility report.
+A user searches for a US address. The system geocodes it, shows an interactive map, and can acquire imagery from the USGS NAIP Plus ImageServer for a bounded WGS84 extent. The service combines NAIP and high-resolution orthoimagery; coverage and resolution vary by location, and the source is not global. Model M (STT + ResNet-50 + INRIA checkpoint) is the frozen segmentation baseline, but its application integration remains planned; engineering inference was validated separately, without a formal HelioScan accuracy benchmark. Later phases estimate roof and usable area, retrieve solar resource data from NASA POWER, calculate **deterministic** energy, financial, and CO₂ figures in Python, generate narrative with local Llama via Ollama, and produce a PDF feasibility report.
 
 The language model is **not** allowed to invent kWh, money, or CO₂ results.
 
@@ -18,8 +18,9 @@ The language model is **not** allowed to invent kWh, money, or CO₂ results.
 
 - Address search and geocoding
 - Interactive map
-- Esri/ArcGIS (or verified equivalent) imagery
-- Rooftop segmentation (U-Net)
+- USGS NAIP Plus imagery acquisition for bounded US extents (Phase 5; terms/redistribution review remains open)
+- Model M rooftop/building segmentation integration (Phase 6)
+- Optional quantitative segmentation evaluation and training/fine-tuning (Phase 7)
 - Roof / usable area estimation
 - NASA POWER solar data
 - PV generation engine
@@ -37,7 +38,7 @@ The language model is **not** allowed to invent kWh, money, or CO₂ results.
 
 ## Architecture overview
 
-Modular FastAPI backend (service modules: geocoding, imagery, segmentation, area, solar data, solar calc, finance, LLM, PDF) plus a Next.js frontend. ML training lives under `ml/`. Data artifacts under `data/`. See `PROJECT_SPEC.md` for diagrams and data flow.
+Modular FastAPI backend (service modules planned for imagery, segmentation, area, solar data, solar calculation, finance, LLM, and PDF) plus a Next.js frontend. The early geocoding and map slices exist. Model M's inference integration and remote imagery acquisition are still planned. See `PROJECT_SPEC.md` for diagrams and data flow.
 
 ```
 Address → coordinates → map → imagery → segmentation → mask
@@ -50,13 +51,13 @@ Address → coordinates → map → imagery → segmentation → mask
 
 | Layer | Technologies |
 | --- | --- |
-| Frontend | Next.js, React, TypeScript, Tailwind CSS, Leaflet (or equivalent), Recharts |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS, Leaflet + React Leaflet, Recharts |
 | Backend | Python, FastAPI, Pydantic, SQLAlchemy, PostgreSQL, httpx, Uvicorn |
-| ML | PyTorch, U-Net, torchvision, OpenCV/Pillow, augmentation library (candidate: Albumentations) |
-| External | Geocoding provider (TBD), Esri/ArcGIS imagery, NASA POWER, Ollama |
+| ML | PyTorch; Model M (STT + ResNet-50 + INRIA checkpoint) as the frozen baseline; optional U-Net/fine-tuning research |
+| External | Nominatim geocoding; USGS NAIP Plus imagery; NASA POWER; Ollama |
 | Reports | Python PDF library (TBD in Phase 14) |
 
-Package **versions are not pinned yet**. See `REQUIREMENTS_PLAN.md`.
+Python dependency planning is described in `REQUIREMENTS_PLAN.md`; installed frontend versions are recorded in `frontend/package.json` and its lockfile.
 
 ---
 
@@ -65,33 +66,32 @@ Package **versions are not pinned yet**. See `REQUIREMENTS_PLAN.md`.
 | Area | Status |
 | --- | --- |
 | Specification and agent rules | Present |
-| FastAPI / Next.js application | Not started |
-| ML training / inference | Not started |
-| External API clients | Not started |
-| Database | Not started |
-| Docker | Not started |
-| `requirements.txt` | Intentionally absent until Phase 0 verifies the machine |
+| FastAPI health and geocoding | Implemented; see backend tests and provider verification memo |
+| Next.js search and interactive map | Implemented; production build uses Webpack |
+| USGS NAIP Plus acquisition | Implemented client, raster validation, local persistence, and mocked tests; terms review remains open |
+| Model M inference integration | Engineering validation complete; application integration planned in Phase 6 |
+| Quantitative segmentation evaluation/training | Optional future work; Phase 7 |
+| Database / Docker | Not implemented |
+| Environment and ML compatibility notes | Recorded in `docs/`; see phase reports |
 
-Current phase: **pre–Phase 0**. Do not start Phase 0 unless explicitly requested.
+The project remains phase-driven. See `DEVELOPMENT_PLAN.md` for prerequisites, checkpoints, and rollback boundaries.
 
 ---
 
 ## Planned setup instructions
 
-Full intended environment: Windows host, WSL2 Ubuntu, Python venv, Node.js, PostgreSQL, Git, NVIDIA drivers, CUDA/PyTorch compatibility check, Ollama. Details: `ENVIRONMENT_SETUP.md`.
-
-**Do not install from this README yet.** When Phase 0 runs, verified steps will replace these placeholders.
+The intended environment is Windows with WSL2 Ubuntu, Python virtual environments, Node.js, Git, NVIDIA/CUDA where available, and Ollama. PostgreSQL remains deferred. Verified environment and PyTorch compatibility findings are recorded in `docs/PHASE_00_ENV_AUDIT.md` and `docs/PHASE_00_PYTORCH_COMPATIBILITY.md`; imagery-source and model/checkpoint terms still require phase-specific review where noted.
 
 ---
 
 ## How the project will eventually be run
 
-All commands below are **planned** until implemented and tested.
+Commands below are workflow examples; verify phase-specific setup and environment values before use.
 
 ### Backend (planned)
 
 1. Create and activate a virtual environment (see `ENVIRONMENT_SETUP.md`).
-2. Install from `backend/requirements.txt` (file created after version verification).
+2. Install from `backend/requirements.txt` in the backend environment.
 3. Copy `.env.example` to `.env` and configure verified secrets.
 4. Start API, in the style of:
 
@@ -99,7 +99,7 @@ All commands below are **planned** until implemented and tested.
    python -m uvicorn app.main:app --reload
    ```
 
-   The exact module path will match the Phase 1 layout.
+   Run from the backend directory.
 
 5. Run tests, in the style of:
 
@@ -119,7 +119,7 @@ npm run build
 ### ML (planned)
 
 1. Verify GPU/CPU with the PyTorch checks in `ENVIRONMENT_SETUP.md`.
-2. Train, evaluate, and infer via scripts added in Phases 7–8 (they do not exist yet).
+2. Phase 6 will integrate Model M inference; Phase 7 covers optional evaluation and training/fine-tuning.
 
 ### Ollama (planned)
 
@@ -160,12 +160,12 @@ HelioScan/
 ├── PROJECT_SPEC.md
 ├── REQUIREMENTS_PLAN.md
 ├── README.md
-├── backend/          # FastAPI (not implemented)
-├── frontend/         # Next.js (not implemented)
-├── ml/               # PyTorch pipeline (not implemented)
-├── data/             # datasets and artifacts (empty; gitignore large files later)
-├── tests/            # cross-cutting tests (not implemented)
-├── docs/             # verification memos, formulas, environment actuals
+├── backend/          # FastAPI health, geocoding, and NAIP acquisition slices
+├── frontend/         # Next.js search and interactive map slices
+├── ml/               # Model M inference integration planned
+├── data/             # Local NAIP test imagery and generated imagery artifacts
+├── tests/            # Cross-cutting test notes
+├── docs/             # Verification memos, model decision, and environment findings
 └── scripts/          # operator/dev scripts (not implemented)
 ```
 
@@ -178,6 +178,8 @@ HelioScan/
 - `DEVELOPMENT_PLAN.md` — Phases 0–18
 - `REQUIREMENTS_PLAN.md` — dependency groups without guessed pins
 - `ENVIRONMENT_SETUP.md` — intended machine and verification commands
+- `docs/MODEL_SELECTION_JOURNEY.md` — Model M selection and engineering validation
+- `docs/PHASE_05_NAIP_VERIFICATION.md` — USGS NAIP Plus service and acquisition contract
 
 ---
 
@@ -187,4 +189,4 @@ Not selected. Do not assume MIT or any other license until a decision is recorde
 
 ---
 
-*HelioScan is under development. Nothing in this README claims a working application.*
+*HelioScan is under development. Reported implementation status is limited to the slices and validations identified above.*
